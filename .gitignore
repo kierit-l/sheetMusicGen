@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+out/
+tests/audio/
+.DS_Store
+.pytest_cache/
+*.mp3

@@ -1,0 +1,40 @@
+[project]
+name = "sheetmusicgen"
+version = "0.1.0"
+description = "Transcribe piano recordings (mp3, wav, ...) into sheet music"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+    "cairosvg>=2.9.1",
+    "gradio>=5",
+    "librosa>=0.11.0",
+    "music21>=10.5.0",
+    "piano-transcription-inference>=0.0.6",
+    "pretty-midi>=0.2.11.post0",
+    "pypdf>=6.19.0",
+    "torch>=2.14.0",
+    "verovio>=6.3.0",
+    "yt-dlp>=2026.8.19",
+]
+
+[project.scripts]
+sheetmusicgen = "sheetmusicgen:main"
+sheetmusicgen-web = "sheetmusicgen.web:main"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "."
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+markers = ["slow: runs the real transcription model (deselect with -m 'not slow')"]
+addopts = "-m 'not slow'"
+pythonpath = ["."]
