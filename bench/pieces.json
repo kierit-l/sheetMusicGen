@@ -1,0 +1,16 @@
+[
+  {"id": "satie_gymnopedie1", "youtube": "https://www.youtube.com/watch?v=2BnWamtDcgc", "reference": "https://www.mutopiaproject.org/ftp/SatieE/gymnopedie_1/gymnopedie_1.mid", "key": "D major", "pickup": 0},
+  {"id": "bach_prelude_c_bwv846", "youtube": "https://www.youtube.com/watch?v=ToWj_4xvVZA", "reference": "https://www.mutopiaproject.org/ftp/BachJS/BWV846/wtk1-prelude1/wtk1-prelude1.mid", "key": "C major", "pickup": 0},
+  {"id": "bach_minuet_g_anh114", "youtube": "https://www.youtube.com/watch?v=p1gGxpitLO8", "reference": "https://www.mutopiaproject.org/ftp/BachJS/BWVAnh114/anna-magdalena-04/anna-magdalena-04.mid", "key": "G major", "pickup": 0},
+  {"id": "beethoven_fur_elise", "youtube": "https://www.youtube.com/watch?v=p2D56saO9bI", "reference": "https://www.mutopiaproject.org/ftp/BeethovenLv/WoO59/fur_Elise_WoO59/fur_Elise_WoO59.mid", "key": "A minor", "pickup": 0.5},
+  {"id": "chopin_prelude_28_4", "youtube": "https://www.youtube.com/watch?v=gLXnBg9LVok", "reference": "https://www.mutopiaproject.org/ftp/ChopinFF/O28/Chop-28-4/Chop-28-4.mid", "key": "E minor", "pickup": 1},
+  {"id": "chopin_prelude_28_7", "youtube": "https://www.youtube.com/watch?v=mKpmKXFSFlY", "reference": "https://www.mutopiaproject.org/ftp/ChopinFF/O28/Chop-28-7/Chop-28-7.mid", "key": "A major", "pickup": 1},
+  {"id": "chopin_nocturne_9_2", "youtube": "https://www.youtube.com/watch?v=--ykTqoQnqI", "reference": "https://www.mutopiaproject.org/ftp/ChopinFF/O9/chopin_nocturne_op9_n2/chopin_nocturne_op9_n2.mid", "key": "Eb major", "pickup": 0.5},
+  {"id": "schumann_68_1_melodie", "youtube": "https://www.youtube.com/watch?v=-_zWKSUpkK0", "reference": "https://www.mutopiaproject.org/ftp/SchumannR/O68/schumann-op68-01-melodie/schumann-op68-01-melodie.mid", "key": "C major", "pickup": 0},
+  {"id": "schumann_68_8_wild_horseman", "youtube": "https://www.youtube.com/watch?v=E9ll7BGvHuc", "reference": "https://www.mutopiaproject.org/ftp/SchumannR/O68/schumann-op68-08-cavalier-sauvage/schumann-op68-08-cavalier-sauvage.mid", "key": "A minor", "pickup": 0.5},
+  {"id": "schumann_68_10_happy_farmer", "youtube": "https://www.youtube.com/watch?v=GWH3DKcuvU4", "reference": "https://www.mutopiaproject.org/ftp/SchumannR/O68/schumann-op68-10-gai-laboureur/schumann-op68-10-gai-laboureur.mid", "key": "F major", "pickup": 0.5},
+  {"id": "schumann_68_11_sicilienne", "youtube": "https://www.youtube.com/watch?v=M-q7CtqYyTw", "reference": "https://www.mutopiaproject.org/ftp/SchumannR/O68/schumann-op68-11-sicilienne/schumann-op68-11-sicilienne.mid", "key": "A minor", "pickup": 0.5},
+  {"id": "mozart_k545_1", "youtube": "https://www.youtube.com/watch?v=dNbqRC4xtEg", "reference": "https://www.mutopiaproject.org/ftp/MozartWA/KV545/K545-1/K545-1.mid", "key": "C major", "pickup": 0},
+  {"id": "clementi_36_1_1", "youtube": "https://www.youtube.com/watch?v=DVclZvxING4", "reference": "https://www.mutopiaproject.org/ftp/ClementiM/O36/sonatina-1/sonatina-1-mids.zip", "key": "C major", "pickup": 0, "reference_member": "sonatina-1.mid"},
+  {"id": "debussy_arabesque1", "youtube": "https://www.youtube.com/watch?v=Yh36PaE-Pf0", "reference": "https://www.mutopiaproject.org/ftp/DebussyC/L66/debussy_Arabesque_1/debussy_Arabesque_1.mid", "key": "E major", "pickup": 0}
+]

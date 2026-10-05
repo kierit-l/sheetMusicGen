@@ -5,3 +5,7 @@ tests/audio/
 .DS_Store
 .pytest_cache/
 *.mp3
+bench/cache/
+bench/out/
+bench/asap/
+bench/asap_audio/

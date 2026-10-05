@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import io
 import os
 import re
@@ -23,14 +24,44 @@ def _expose_homebrew_cairo() -> None:
 # Verovio writes note symbols inside text (e.g. the tempo mark) with the SMuFL
 # web font, which cairo cannot load; swap them for Unicode music symbols.
 _SMUFL_TO_UNICODE = {
-    "\ueca2": "\U0001D15D",  # metNoteWhole
-    "\ueca3": "\U0001D15E",  # metNoteHalfUp
     "\ueca5": "\u2669",  # metNoteQuarterUp
     "\ueca7": "\u266A",  # metNote8thUp
     "\uecb7": ".",  # metAugmentationDot
 }
+# Common system fonts have no half or whole note (U+1D15E, U+1D15D), so a tempo
+# mark starting with one is drawn from the font's outlines instead.
+_SMUFL_DRAWN = {"\ueca2", "\ueca3"}  # metNoteWhole, metNoteHalfUp
 _SYMBOL_FONT = {"darwin": "Apple Symbols", "win32": "Segoe UI Symbol"}.get(sys.platform, "DejaVu Sans")
 _SMUFL_TSPAN = re.compile(r'<tspan font-family="Leipzig" font-size="(\d+)px">([^<]*)</tspan>')
+_TEXT = re.compile(r'<text x="(-?\d+)" y="(-?\d+)"([^>]*)>(.*?)</text>', re.S)
+
+
+@functools.cache
+def _leipzig_glyph(char: str) -> tuple[str, float]:
+    """SVG path data (1000 units per em, y up) and advance width of a Leipzig glyph."""
+    import verovio
+
+    data = Path(verovio.__file__).parent / "data"
+    code = f"{ord(char):04X}"
+    path = re.search(r' d="([^"]+)"', (data / "Leipzig" / f"{code}.xml").read_text()).group(1)
+    advance = re.search(rf'<g c="{code}"[^>]*h-a-x="(\d+)"', (data / "Leipzig.xml").read_text()).group(1)
+    return path, float(advance)
+
+
+def _draw_leading_glyphs(m: re.Match) -> str:
+    x, y, attrs, body = int(m.group(1)), int(m.group(2)), m.group(3), m.group(4)
+    glyphs = _SMUFL_TSPAN.search(body)
+    if not glyphs or not _SMUFL_DRAWN & set(glyphs.group(2)) or re.sub(r"<[^>]+>|\s", "", body[: glyphs.start()]):
+        return m.group(0)
+    scale = int(glyphs.group(1)) / 1000
+    paths, advance = [], 0.0
+    for c in glyphs.group(2):
+        d, width = _leipzig_glyph(c)
+        paths.append(f'<path transform="translate({x + advance:.0f},{y}) scale({scale},{-scale})" d="{d}" />')
+        advance += width * scale
+    body = body[: glyphs.start()] + body[glyphs.end() :]
+    gap = int(glyphs.group(1)) // 10
+    return "".join(paths) + f'<text x="{x + advance + gap:.0f}" y="{y}"{attrs}>{body}</text>'
 
 
 def _replace_smufl_text(svg: str) -> str:
@@ -39,7 +70,7 @@ def _replace_smufl_text(svg: str) -> str:
         size = int(int(m.group(1)) * 0.9)
         return f'<tspan font-family="{_SYMBOL_FONT}" font-size="{size}px">{text}</tspan>'
 
-    return _SMUFL_TSPAN.sub(sub, svg)
+    return _SMUFL_TSPAN.sub(sub, _TEXT.sub(_draw_leading_glyphs, svg))
 
 
 def _toolkit():

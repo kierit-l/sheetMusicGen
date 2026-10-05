@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import shutil
 import tempfile
@@ -11,7 +12,8 @@ from pathlib import Path
 
 import gradio as gr
 
-from .pipeline import Options, Result, Transcription, notate, safe_stem, transcribe_file
+from .lookup import Reference
+from .pipeline import Options, Result, Transcription, find_reference, notate, safe_stem, transcribe_file
 from .youtube import download_audio, is_url
 
 JOBS_DIR = Path(os.environ.get("SHEETMUSICGEN_JOBS_DIR", Path(tempfile.gettempdir()) / "sheetmusicgen-jobs"))
@@ -20,7 +22,8 @@ MAX_MINUTES = float(os.environ.get("SHEETMUSICGEN_MAX_MINUTES", 10))
 DEVICE = os.environ.get("SHEETMUSICGEN_DEVICE", "auto")
 
 GRIDS = [("Sixteenths", 4), ("Eighths", 2), ("Triplets", 3), ("Quarters", 1), ("Sextuplets", 6), ("32nds", 8)]
-TIME_SIGS = ["auto", "2/4", "3/4", "4/4", "6/4", "3/8", "6/8", "9/8", "12/8"]
+TIME_SIGS = ["auto", "2/4", "3/4", "4/4", "2/2", "6/4", "3/8", "6/8", "9/8", "12/8"]
+NOTE_VALUES = [("As detected", "auto"), ("Twice as long", "double"), ("Half as long", "halve")]
 
 INTRO = """\
 # sheetmusicgen
@@ -39,13 +42,15 @@ def _cleanup_old_jobs() -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
-def _options(title, bpm, time_sig, grid, split, min_velocity) -> Options:
+def _options(title, bpm, time_sig, grid, note_values, split, min_velocity) -> Options:
     return Options(
         title=title.strip() or None,
         bpm=float(bpm) if bpm else None,
         time_sig=time_sig,
         grid=int(grid),
-        split=int(split),
+        note_values=note_values,
+        split=int(split) or 60,
+        hands="split" if int(split) else "model",
         min_velocity=int(min_velocity),
     )
 
@@ -65,6 +70,8 @@ def _preview(result: Result) -> str:
 
 
 def _beat_name(result: Result) -> str:
+    if result.time_sig.endswith("/2"):
+        return "half notes/min"
     return "dotted quarters/min" if result.time_sig.endswith("/8") else "bpm"
 
 
@@ -73,6 +80,18 @@ def _summary(result: Result) -> str:
         f"**{result.note_count}** notes · **~{result.bpm:.0f} {_beat_name(result)}** · "
         f"**{result.time_sig}** · key of **{result.key}**"
     ]
+    if result.reference:
+        lines.append(
+            f"Beats and bars follow the matching library score: {result.reference}. "
+            "Forcing a tempo, time signature or note values detects them from the recording instead."
+        )
+    if result.other_meters:
+        lines.append(
+            f"{' or '.join(result.other_meters)} would fit nearly as well: pick it under Notation options "
+            "and press Re-notate. If every note looks twice too short or too long, change Note values."
+        )
+    if result.dropped_notes:
+        lines.append(f"Left out {result.dropped_notes} notes cut off from the piece by a long silence (intro/outro).")
     if result.pdf_error:
         lines.append(f"PDF rendering failed ({result.pdf_error}); the MusicXML opens in MuseScore.")
     return "\n\n".join(lines)
@@ -81,16 +100,18 @@ def _summary(result: Result) -> str:
 def _notate_job(state: dict, opts: Options, progress: gr.Progress):
     job = Path(state["job"])
     t = Transcription.load(job / f"{state['stem']}.notes.json")
+    ref_file = job / "reference.json"
+    reference = Reference.from_dict(json.loads(ref_file.read_text())) if ref_file.exists() else None
     progress(0.8, desc="Building the score")
     try:
-        result = notate(t, job, state["stem"], opts, progress=lambda m: progress(0.9, desc=m))
+        result = notate(t, job, state["stem"], opts, progress=lambda m: progress(0.9, desc=m), reference=reference)
     except ValueError as e:
         raise gr.Error(str(e)) from None
     job.touch()  # keep the job alive while it is being used
     return _summary(result), _preview(result), [str(p) for p in result.outputs]
 
 
-def transcribe_upload(audio_path, url, title, bpm, time_sig, grid, split, min_velocity, progress=gr.Progress()):
+def transcribe_upload(audio_path, url, title, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
     url = (url or "").strip()
     if not audio_path and not url:
         raise gr.Error("Upload a recording or paste a YouTube link first.")
@@ -118,28 +139,46 @@ def transcribe_upload(audio_path, url, title, bpm, time_sig, grid, split, min_ve
         audio = src.rename(job / f"{stem}{src.suffix.lower()}")
 
     progress(0.05, desc="Loading audio")
+    status = "Transcribing"
+
+    def on_message(msg: str):
+        nonlocal status
+        status = msg
+        if msg.startswith("Tracking beats"):
+            progress(0.8, desc=msg)
+        else:
+            progress(0.1, desc=msg + " (this is the slow part)")
+
+    def on_segment(done: int, total: int):
+        # The model run is most of the wait; spread it over 10-80%.
+        progress(0.1 + 0.7 * done / total, desc=f"{status} ({done}/{total} segments)")
+
     try:
-        transcribe_file(
+        t = transcribe_file(
             audio,
             job,
             device=DEVICE,
             max_seconds=MAX_MINUTES * 60,
-            progress=lambda m: progress(0.1, desc=m + " (this is the slow part)"),
+            progress=on_message,
+            on_segment=on_segment,
         )
     except (RuntimeError, ValueError) as e:
         shutil.rmtree(job, ignore_errors=True)
         raise gr.Error(str(e)) from None
     audio.unlink()
+    reference = find_reference(t, title or name, progress=lambda m: progress(0.8, desc=m))
+    if reference:
+        (job / "reference.json").write_text(json.dumps(reference.to_dict()))
 
     state = {"job": str(job), "stem": stem}
-    opts = _options(title or name, bpm, time_sig, grid, split, min_velocity)
+    opts = _options(title or name, bpm, time_sig, grid, note_values, split, min_velocity)
     return *_notate_job(state, opts, progress), state, gr.update(interactive=True)
 
 
-def renotate(state, title, bpm, time_sig, grid, split, min_velocity, progress=gr.Progress()):
+def renotate(state, title, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
     if not state or not Path(state["job"]).exists():
         raise gr.Error("No transcription to re-use (it may have expired); transcribe a recording first.")
-    return _notate_job(state, _options(title or state["stem"], bpm, time_sig, grid, split, min_velocity), progress)
+    return _notate_job(state, _options(title or state["stem"], bpm, time_sig, grid, note_values, split, min_velocity), progress)
 
 
 def build_ui() -> gr.Blocks:
@@ -155,7 +194,14 @@ def build_ui() -> gr.Blocks:
                     bpm = gr.Number(label="Tempo (bpm)", value=0, minimum=0, maximum=300, info="0 = detect")
                     time_sig = gr.Dropdown(TIME_SIGS, value="auto", label="Time signature")
                     grid = gr.Dropdown(GRIDS, value=4, label="Rhythmic grid", info="shortest note value")
-                    split = gr.Slider(36, 84, value=60, step=1, label="Hand split (MIDI note)", info="60 = middle C")
+                    note_values = gr.Dropdown(
+                        NOTE_VALUES, value="auto", label="Note values",
+                        info="if every note came out twice too short or too long",
+                    )
+                    split = gr.Slider(
+                        0, 84, value=0, step=1, label="Hand split (MIDI note)",
+                        info="0 = a model assigns notes to hands; 60 = split at middle C",
+                    )
                     min_velocity = gr.Slider(0, 127, value=0, step=1, label="Drop notes quieter than")
                 with gr.Row():
                     go = gr.Button("Transcribe", variant="primary")
@@ -167,7 +213,7 @@ def build_ui() -> gr.Blocks:
                 files = gr.File(label="Downloads", file_count="multiple", interactive=False)
                 preview = gr.HTML()
 
-        options = [title, bpm, time_sig, grid, split, min_velocity]
+        options = [title, bpm, time_sig, grid, note_values, split, min_velocity]
         go.click(transcribe_upload, [audio, url, *options], [summary, preview, files, state, again])
         again.click(renotate, [state, *options], [summary, preview, files])
     return demo

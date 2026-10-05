@@ -87,6 +87,19 @@ def fur_elise_3_8():
     return ev
 
 
+def syncopated_4_4():
+    """Am / G in 4/4 with chords on 3 + 3 + 2 eighths, as in swing and pop, over eighth fills (beats are quarters)."""
+    melody = (81, 79, 76, 79, 81, 84, 83, 79)
+    ev = []
+    for bar in range(24):
+        chord = (69, 72, 76) if bar % 2 == 0 else (67, 71, 74)
+        for i, (start, dur) in enumerate([(0, 1.5), (1.5, 1.5), (3, 1)]):
+            ev.append((4 * bar + start, dur, (45, 52, 50)[i], 90))
+            ev += [(4 * bar + start, dur, p, 75) for p in chord]
+        ev += [(4 * bar + i / 2, 0.5, p, 60) for i, p in enumerate(melody) if i not in (0, 3, 6)]
+    return ev
+
+
 if __name__ == "__main__":
     out = Path(sys.argv[1] if len(sys.argv) > 1 else "tests/audio")
     out.mkdir(parents=True, exist_ok=True)
