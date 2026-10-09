@@ -45,6 +45,11 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     ap.add_argument("--min-velocity", type=int, default=0, help="drop quieter notes (0-127)")
     ap.add_argument(
+        "--simplify",
+        action="store_true",
+        help="write an easy arrangement: the melody over block chords, instead of every note played",
+    )
+    ap.add_argument(
         "--no-lookup",
         action="store_true",
         help="don't look the piece up in the score library (python -m sheetmusicgen.lookup build) for its beats and bars",
@@ -76,6 +81,7 @@ def main(argv=None) -> int:
         hands="split" if args.split else "model",
         note_values=args.note_values,
         min_velocity=args.min_velocity,
+        simplify=args.simplify,
         pdf=not args.no_pdf,
         pdf_engine=args.pdf_engine,
     )

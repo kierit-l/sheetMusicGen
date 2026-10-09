@@ -40,7 +40,7 @@ def test_build_ui():
 
 def test_transcribe_then_renotate(fake_model):
     summary, preview, files, state, _ = web.transcribe_upload(
-        str(fake_model), "", "", 0, "auto", 4, "auto", 60, 0, progress=no_progress
+        str(fake_model), "", "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress
     )
     assert "4/4" in summary and "C major" in summary
     assert "<svg" in preview
@@ -53,13 +53,16 @@ def test_transcribe_then_renotate(fake_model):
     ]
     assert state["stem"] == "My_Song_live"
 
-    summary, _, _ = web.renotate(state, "Other", 0, "3/4", 2, "auto", 60, 0, progress=no_progress)
+    summary, _, _ = web.renotate(state, "Other", False, 0, "3/4", 2, "auto", 60, 0, progress=no_progress)
     assert "3/4" in summary
+
+    summary, preview, _ = web.renotate(state, "Other", True, 0, "auto", 4, "auto", 60, 0, progress=no_progress)
+    assert "4/4" in summary and "<svg" in preview
 
 
 def test_renotate_without_transcription():
     with pytest.raises(gr.Error):
-        web.renotate(None, "", 0, "auto", 4, "auto", 60, 0, progress=no_progress)
+        web.renotate(None, "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress)
 
 
 def test_bad_audio_cleans_up(fake_model, monkeypatch):
@@ -68,7 +71,7 @@ def test_bad_audio_cleans_up(fake_model, monkeypatch):
 
     monkeypatch.setattr(transcribe_mod, "load_audio", broken)
     with pytest.raises(gr.Error, match="decode"):
-        web.transcribe_upload(str(fake_model), "", "", 0, "auto", 4, "auto", 60, 0, progress=no_progress)
+        web.transcribe_upload(str(fake_model), "", "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress)
     assert list(web.JOBS_DIR.iterdir()) == []
 
 
@@ -88,7 +91,7 @@ def fake_download(fake_model, monkeypatch):
 
 def test_transcribe_youtube_link(fake_download):
     summary, _, files, state, _ = web.transcribe_upload(
-        None, " https://youtu.be/dQw4w9WgXcQ ", "", 0, "auto", 4, "auto", 60, 0, progress=no_progress
+        None, " https://youtu.be/dQw4w9WgXcQ ", "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress
     )
     assert fake_download == ["https://youtu.be/dQw4w9WgXcQ"]
     assert "C major" in summary
@@ -99,7 +102,7 @@ def test_transcribe_youtube_link(fake_download):
 
 def test_upload_wins_over_link(fake_download, fake_model):
     _, _, _, state, _ = web.transcribe_upload(
-        str(fake_model), "https://youtu.be/x", "", 0, "auto", 4, "auto", 60, 0, progress=no_progress
+        str(fake_model), "https://youtu.be/x", "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress
     )
     assert fake_download == [] and state["stem"] == "My_Song_live"
 
@@ -107,7 +110,7 @@ def test_upload_wins_over_link(fake_download, fake_model):
 @pytest.mark.parametrize("url", ["", "   ", "not a link"])
 def test_needs_upload_or_link(url):
     with pytest.raises(gr.Error):
-        web.transcribe_upload(None, url, "", 0, "auto", 4, "auto", 60, 0, progress=no_progress)
+        web.transcribe_upload(None, url, "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress)
 
 
 def test_failed_download_cleans_up(fake_model, monkeypatch):
@@ -116,5 +119,5 @@ def test_failed_download_cleans_up(fake_model, monkeypatch):
 
     monkeypatch.setattr(web, "download_audio", broken)
     with pytest.raises(gr.Error, match="unavailable"):
-        web.transcribe_upload(None, "https://youtu.be/x", "", 0, "auto", 4, "auto", 60, 0, progress=no_progress)
+        web.transcribe_upload(None, "https://youtu.be/x", "", False, 0, "auto", 4, "auto", 60, 0, progress=no_progress)
     assert list(web.JOBS_DIR.iterdir()) == []

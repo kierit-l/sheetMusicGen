@@ -42,7 +42,7 @@ def _cleanup_old_jobs() -> None:
             shutil.rmtree(d, ignore_errors=True)
 
 
-def _options(title, bpm, time_sig, grid, note_values, split, min_velocity) -> Options:
+def _options(title, simplify, bpm, time_sig, grid, note_values, split, min_velocity) -> Options:
     return Options(
         title=title.strip() or None,
         bpm=float(bpm) if bpm else None,
@@ -52,6 +52,7 @@ def _options(title, bpm, time_sig, grid, note_values, split, min_velocity) -> Op
         split=int(split) or 60,
         hands="split" if int(split) else "model",
         min_velocity=int(min_velocity),
+        simplify=bool(simplify),
     )
 
 
@@ -111,7 +112,7 @@ def _notate_job(state: dict, opts: Options, progress: gr.Progress):
     return _summary(result), _preview(result), [str(p) for p in result.outputs]
 
 
-def transcribe_upload(audio_path, url, title, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
+def transcribe_upload(audio_path, url, title, simplify, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
     url = (url or "").strip()
     if not audio_path and not url:
         raise gr.Error("Upload a recording or paste a YouTube link first.")
@@ -171,14 +172,15 @@ def transcribe_upload(audio_path, url, title, bpm, time_sig, grid, note_values, 
         (job / "reference.json").write_text(json.dumps(reference.to_dict()))
 
     state = {"job": str(job), "stem": stem}
-    opts = _options(title or name, bpm, time_sig, grid, note_values, split, min_velocity)
+    opts = _options(title or name, simplify, bpm, time_sig, grid, note_values, split, min_velocity)
     return *_notate_job(state, opts, progress), state, gr.update(interactive=True)
 
 
-def renotate(state, title, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
+def renotate(state, title, simplify, bpm, time_sig, grid, note_values, split, min_velocity, progress=gr.Progress()):
     if not state or not Path(state["job"]).exists():
         raise gr.Error("No transcription to re-use (it may have expired); transcribe a recording first.")
-    return _notate_job(state, _options(title or state["stem"], bpm, time_sig, grid, note_values, split, min_velocity), progress)
+    opts = _options(title or state["stem"], simplify, bpm, time_sig, grid, note_values, split, min_velocity)
+    return _notate_job(state, opts, progress)
 
 
 def build_ui() -> gr.Blocks:
@@ -190,6 +192,10 @@ def build_ui() -> gr.Blocks:
                 audio = gr.Audio(sources=["upload"], type="filepath", label="Piano recording")
                 url = gr.Textbox(label="...or a YouTube link", placeholder="https://www.youtube.com/watch?v=...")
                 title = gr.Textbox(label="Title", placeholder="defaults to the file name or video title")
+                simplify = gr.Checkbox(
+                    label="Easy arrangement",
+                    info="just the melody over block chords, instead of every note played",
+                )
                 with gr.Accordion("Notation options", open=False):
                     bpm = gr.Number(label="Tempo (bpm)", value=0, minimum=0, maximum=300, info="0 = detect")
                     time_sig = gr.Dropdown(TIME_SIGS, value="auto", label="Time signature")
@@ -213,7 +219,7 @@ def build_ui() -> gr.Blocks:
                 files = gr.File(label="Downloads", file_count="multiple", interactive=False)
                 preview = gr.HTML()
 
-        options = [title, bpm, time_sig, grid, note_values, split, min_velocity]
+        options = [title, simplify, bpm, time_sig, grid, note_values, split, min_velocity]
         go.click(transcribe_upload, [audio, url, *options], [summary, preview, files, state, again])
         again.click(renotate, [state, *options], [summary, preview, files])
     return demo

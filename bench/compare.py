@@ -25,6 +25,9 @@ dynamic time warping on chroma:
   barlines           of the matched notes that start a bar in the score with
                      the longer bars, the share that also start a bar in the
                      other score (1 = barlines in the right place).
+  ink                symbols written (notes, chords and rests, each tied
+                     piece counted) per symbol of the reference engraved the
+                     same way (1 = as simple to read as the score).
 """
 
 from __future__ import annotations
@@ -154,6 +157,25 @@ def score_notes(musicxml: Path) -> list[N]:
     return out
 
 
+def written_symbols(score) -> int:
+    """Notes, chords and rests on the page, every piece of a tied note counted."""
+    return sum(len(list(part.recurse().notesAndRests)) for part in score.parts)
+
+
+def engraved_reference(ref_q: list[N], time_sig: str, pickup: float):
+    """The reference notes engraved by build_score, so their symbols count like ours."""
+    from sheetmusicgen.notation import build_score
+    from sheetmusicgen.rhythm import QNote, Rhythm
+
+    q = lambda x: Fraction(x).limit_denominator(48)  # noqa: E731
+    num, den = map(int, time_sig.split("/"))
+    bar = Fraction(4 * num, den)
+    shift = (bar - q(pickup)) % bar  # a pickup bar is written as a full bar starting with rests
+    notes = [QNote(q(n.onset) + shift, q(n.offset) + shift, n.pitch, 80, False, n.staff == 0) for n in ref_q]
+    score, _ = build_score(Rhythm(sorted(notes, key=lambda n: (n.start, n.pitch)), 80, time_sig), "reference")
+    return score
+
+
 # ---------------------------------------------------------------- alignment
 
 
@@ -280,11 +302,11 @@ class Report:
     hands: float  # matched notes written on the same staff as in the reference
     durations: float  # matched notes written with the reference's length (times beat scale)
     short: float  # median written length / reference length (< 1: notes cut short)
+    ink: float  # written symbols per symbol of the engraved reference
     notes_ref: int
     notes_score: int
     dropped: int
     form: str  # which reference fit the performance: "printed" or "unfolded" repeats
-
 
 def evaluate(piece: dict) -> Report:
     from sheetmusicgen.pipeline import Options, Transcription, notate
@@ -357,6 +379,12 @@ def evaluate(piece: dict) -> Report:
     n_gen_db = sum(gen[j].downbeat for _, j in pairs)
     dbf = hit / min(n_ref_db, n_gen_db) if min(n_ref_db, n_gen_db) else 0.0
 
+    from music21 import converter
+
+    ink = written_symbols(converter.parse(str(res.musicxml))) / written_symbols(
+        engraved_reference(ref_q, meter_ref, piece.get("pickup", 0))
+    )
+
     return Report(
         id=piece["id"],
         key=res.key,
@@ -378,6 +406,7 @@ def evaluate(piece: dict) -> Report:
         hands=hands,
         durations=durations,
         short=short,
+        ink=ink,
         notes_ref=len(ref_q),
         notes_score=len(gen),
         dropped=res.dropped_notes,
@@ -391,7 +420,7 @@ def main() -> None:
     if want:
         pieces = [p for p in pieces if any(w in p["id"] for w in want)]
     reports = []
-    hdr = f"{'piece':30} {'key':18} {'meter':14} {'bpm':>5} {'transF1':>7} {'scoreF1':>7} {'scale':>5} {'rhythm':>6} {'bars':>5} {'hands':>5} {'durs':>5} form"
+    hdr = f"{'piece':30} {'key':18} {'meter':14} {'bpm':>5} {'transF1':>7} {'scoreF1':>7} {'scale':>5} {'rhythm':>6} {'bars':>5} {'hands':>5} {'durs':>5} {'ink':>5} form"
     print(hdr)
     print("-" * len(hdr))
     for p in pieces:
@@ -405,7 +434,7 @@ def main() -> None:
         meter = f"{r.meter}{'' if r.meter_ok == 'ok' else ' vs ' + r.meter_ref}"
         print(
             f"{r.id:30} {key:18} {meter:14} {r.bpm:5.0f} {r.trans_f1:7.3f} {r.score_f1:7.3f} "
-            f"{r.beat_scale:5.2g} {r.rhythm_acc:6.3f} {r.barlines:5.2f} {r.hands:5.2f} {r.durations:5.2f} {r.form}",
+            f"{r.beat_scale:5.2g} {r.rhythm_acc:6.3f} {r.barlines:5.2f} {r.hands:5.2f} {r.durations:5.2f} {r.ink:5.2f} {r.form}",
             flush=True,
         )
     if reports:
@@ -414,7 +443,7 @@ def main() -> None:
         print(
             f"{'mean':30} {sum(r.key_ok == 'ok' for r in reports)}/{len(reports)} keys{'':7} "
             f"{sum(r.meter_ok == 'ok' for r in reports)}/{len(reports)} meters {'':5} "
-            f"{mean('trans_f1'):7.3f} {mean('score_f1'):7.3f} {'':5} {mean('rhythm_acc'):6.3f} {mean('barlines'):5.2f} {mean('hands'):5.2f} {mean('durations'):5.2f}  (median length ratio {np.median([r.short for r in reports]):.2f})"
+            f"{mean('trans_f1'):7.3f} {mean('score_f1'):7.3f} {'':5} {mean('rhythm_acc'):6.3f} {mean('barlines'):5.2f} {mean('hands'):5.2f} {mean('durations'):5.2f} {mean('ink'):5.2f}  (median length ratio {np.median([r.short for r in reports]):.2f})"
         )
         OUT.mkdir(exist_ok=True)
         (OUT / ("results_lookup.json" if "--lookup" in sys.argv else "results.json")).write_text(json.dumps([asdict(r) for r in reports], indent=1))

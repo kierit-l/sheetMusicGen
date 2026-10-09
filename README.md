@@ -26,8 +26,9 @@ uv run sheetmusicgen-web     # then open http://127.0.0.1:7860
 
 Upload a recording or paste a YouTube link, get a score preview plus
 PDF/MusicXML/MIDI downloads.
-Changing tempo, meter, grid, note values or hand split and pressing
-**Re-notate** reuses the transcription, so it takes about a second. When
+Changing tempo, meter, grid, note values or hand split (or ticking **Easy
+arrangement**) and pressing **Re-notate** reuses the transcription, so it
+takes about a second. When
 another meter fits nearly as well, the summary suggests it (the CLI prints it
 too).
 
@@ -51,10 +52,12 @@ Environment variables: `SHEETMUSICGEN_MAX_MINUTES` (default 10),
    played with it. Whether beats split in two or three (6/8, with
    sixteenths too) comes from where the notes fall. Bars come from the
    model's downbeat probabilities: the bar length (2, 3 or 4 beats) whose
-   downbeats stand out most, then a pass that may restart the count where
+   downbeats stand out most (where none does, the notes' accents pick it),
+   then a pass that may restart the count where
    the downbeats clearly move, leaving a bar of another length with its own
    time signature (a missed beat no longer shifts every later barline).
-   Slow beats that are really half notes are written in 2/2. Without audio
+   Slow beats that are really half notes (most notes would otherwise be
+   32nds) are written in 2/2. Without audio
    beats (old transcriptions, or a forced meter the beats contradict), beats
    are tracked on the transcribed onsets and the meter is picked from where
    loud, long and bass notes fall.
@@ -77,6 +80,27 @@ Environment variables: `SHEETMUSICGEN_MAX_MINUTES` (default 10),
    its staff's range), write MusicXML.
 6. **Engrave** a PDF with Verovio + cairo (or MuseScore if installed).
 
+## Easy arrangement
+
+A faithful transcription writes down everything the pianist played, which
+for a piano cover means octave doublings, inner voices, broken-chord
+accompaniments and fills. `--simplify` (the web app's **Easy arrangement**)
+writes what an easy-piano edition would print instead:
+
+- **Right hand: the melody**, one note at a time. It is the top voice,
+  except for notes under a melody note still held down, or a leap of more
+  than a fifth below one that just started (a right hand filling the gaps
+  in the tune with broken chords). A lone note more than an octave above
+  the tune around it is taken for a misheard overtone and left out. Onsets
+  round to eighths, or to 16ths where those last at least 0.2 s (slow pieces).
+- **Left hand: block chords**, one per bar, or per half bar (2 + 1 beats in
+  3/4) where the harmony changes enough to be worth it: the bass note and
+  the two strongest other pitch classes of everything that isn't melody,
+  skipping tones a step from one already chosen, in close position.
+
+It works on the transcription, so the meter, key and bars are the same as in
+the full score.
+
 ## Options
 
 ```
@@ -87,6 +111,7 @@ Environment variables: `SHEETMUSICGEN_MAX_MINUTES` (default 10),
 --split 60           split hands at this MIDI note (60 = middle C) instead of using the hand model
 --note-values double write every note twice as long (or `halve`), if the beat came out at the wrong level
 --min-velocity 20    drop quiet ghost notes
+--simplify           easy arrangement: the melody over block chords (see above)
 --title "..."        score title
 --device cpu|mps     override the torch device
 --pdf-engine musescore   use MuseScore for nicer engraving (if installed)
@@ -158,17 +183,39 @@ git clone --depth 1 https://github.com/fosfrancesco/asap-dataset bench/asap
 uv run python bench/maestro_audio.py        # MAESTRO audio of ~150 ASAP pieces (~600 MB)
 uv run python bench/asap_bench.py --audio --tune      # tune constants on these only
 uv run python bench/asap_bench.py --audio --heldout   # honest score
+git clone --depth 1 https://github.com/CPJKU/vienna4x22 bench/v4x22/repo    # + its audio, see v4x22_bench.py
+uv run python bench/v4x22_bench.py --transcribe        # 88 recordings, from the audio as in the app
+uv run python bench/v4x22_bench.py
 ```
 
-Both take `--lookup` to use the score library. The YouTube references are
+All three take `--lookup` to use the score library. The YouTube references are
 Mutopia scores themselves, so that is an upper bound; ASAP's scores come from
 other editions, and its results are split into pieces found in the library
 and pieces not found.
+
+The Vienna 4x22 corpus (22 pianists, 4 excerpts, recorded on a
+Boesendorfer SE) is new to every model used here and was never tuned on;
+it runs the whole app, transcription included, on the recordings.
 
 ASAP pairs MAESTRO performances with their scores and annotated beats,
 downbeats and meters. Beats are tracked with the beat_this cross-validation
 model that never saw the piece, and `--pm2s-unseen` restricts to the pieces
 the hand model never trained on.
+
+#### Results
+
+Held-out ASAP performances (51 pieces, not used for tuning), scored against
+ASAP's annotated beats and downbeats:
+
+| metric | onset-only baseline | this pipeline |
+| --- | --- | --- |
+| beat F1 | 0.51 | 0.74 |
+| downbeat F1 | 0.25 | 0.53 |
+
+Note F1 of the final score against the reference is 93%. The onset-only
+baseline tracks beats from transcribed note onsets alone; the custom beat,
+downbeat and meter logic in `sheetmusicgen/rhythm.py` produces the second
+column. Reproduce with `uv run python bench/asap_bench.py --audio --heldout`.
 
 ## License
 

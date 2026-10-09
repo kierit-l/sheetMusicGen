@@ -7,7 +7,7 @@ from make_test_audio import waltz_f_3_4
 from test_pipeline import as_notes, transcription
 
 from sheetmusicgen.notation import build_score
-from sheetmusicgen.pipeline import Options, notate
+from sheetmusicgen.pipeline import Options, Transcription, notate
 from sheetmusicgen.rhythm import QNote, Rhythm, beat_division, decode_beats, extend_beats, quantize, snap_beats
 from sheetmusicgen.transcribe import Note
 
@@ -159,3 +159,43 @@ def test_close_meters_are_offered_as_alternatives():
     clear = [(beats[i], 0.9 if i % 4 == 0 else 0.05) for i in range(48)]
     assert quantize(notes, beats, downbeat_probs=clear).other_meters == []
 
+
+
+def test_bars_follow_the_downbeats_when_their_phase_drifts():
+    # Every third bar is a beat short and the model is unsure, so no phase of a
+    # 4-beat bar stands out over the whole piece; the downbeats still say
+    # where each bar starts.
+    beat = 0.5
+    notes = [Note(0.5 + i * beat, 0.5 + (i + 1) * beat, 60 + i % 5, 80) for i in range(66)]
+    beats = grid(notes, beat)
+    down, b = [], 0
+    while b < 66:
+        down.append(b)
+        b += 3 if len(down) % 3 == 0 else 4
+    probs = [(beats[i], 0.8 if i in down else 0.1) for i in range(66)]
+    r = quantize(notes, beats, downbeat_probs=probs)
+    hits = sum(min(abs(t - beats[i]) for t in r.downbeat_times) < 1e-6 for i in down)
+    assert hits >= len(down) - 1
+
+
+def slow_beats(tmp_path, per_beat):
+    """A piece at 70 bpm moving in `per_beat` notes a beat, with beats tracked on the audio."""
+    beat = 60 / 70
+    n = 32 * per_beat
+    notes = [Note(0.5 + i * beat / per_beat, 0.5 + (i + 1) * beat / per_beat, 60 + i % 7, 90 if i % per_beat == 0 else 60) for i in range(n)]
+    t = Transcription(notes, notes[-1].offset + 1, tmp_path / "x.transcribed.mid")
+    t.beats = list(np.arange(0.5, t.duration, beat))
+    t.downbeat_probs = [0.8 if i % 2 == 0 else 0.1 for i in range(len(t.beats))]
+    return t
+
+
+def test_slow_beats_moving_in_sixteenths_stay_quarters(tmp_path):
+    r = notate(slow_beats(tmp_path, 4), tmp_path, "s", Options(pdf=False, hands="split"))
+    assert r.time_sig != "2/2"
+    assert min(float(e.quarterLength) for e in build_notes(r)) == 0.25
+
+
+def test_slow_beats_moving_in_32nds_are_half_notes(tmp_path):
+    r = notate(slow_beats(tmp_path, 8), tmp_path, "s", Options(pdf=False, hands="split"))
+    assert r.time_sig == "2/2"
+    assert min(float(e.quarterLength) for e in build_notes(r)) == 0.25

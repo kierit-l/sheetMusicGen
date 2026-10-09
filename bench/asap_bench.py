@@ -15,6 +15,7 @@
     uv run python bench/asap_bench.py --lookup        # beats and bars from a matched library score, where one
                                                       # fits (titled by the folder; see sheetmusicgen/lookup.py)
     SMG_HANDS=split uv run python bench/asap_bench.py # hands split at middle C, not by the PM2S model
+    SMG_ORACLE_BEATS=1 uv run python bench/asap_bench.py --audio  # annotated beats and downbeats (a ceiling)
 
 Constants in rhythm.py may only be tuned on --tune; --heldout is the honest
 score. The split is by piece (every performance of a piece on the same side).
@@ -184,6 +185,10 @@ def evaluate(entry: dict) -> Row | str:
             # note, but ASAP's MIDI has a lead-in before it; uncut audio lines up.
             lead = min(n.onset for n in notes) if entry["start"] else 0.0
             t.beats, t.downbeat_probs = [b + lead for b in beats], probs
+        if os.environ.get("SMG_ORACLE_BEATS"):  # the annotated beats and downbeats, as if tracked perfectly
+            downs = set(ann["performance_downbeats"])
+            t.beats = list(ann["performance_beats"])
+            t.downbeat_probs = [0.95 if b in downs else 0.05 for b in t.beats]
         slug = entry["midi_performance"].removesuffix(".mid").replace("/", "_")
         reference = None
         if entry.get("lookup"):

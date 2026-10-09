@@ -74,6 +74,7 @@ class Options:
     note_values: str = "auto"  # "double" or "halve" every note value (the beat was tracked at the wrong level)
     hands: str = "model"  # "model": the PM2S hand-part model decides; "split": the right hand plays from `split` up
     min_velocity: int = 0
+    simplify: bool = False  # an easy arrangement: the melody over block chords
     pdf: bool = True
     pdf_engine: str = "auto"
 
@@ -251,7 +252,7 @@ def notate(
         right_hand=right_hand,
     )
     title = unicodedata.normalize("NFC", opts.title or stem)
-    score, k = build_score(rhythm, title, split=opts.split)
+    score, k = build_score(rhythm, title, split=opts.split, simplify=opts.simplify)
 
     progress("Writing score")
     outdir.mkdir(parents=True, exist_ok=True)

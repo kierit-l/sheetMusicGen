@@ -35,6 +35,7 @@ DOWNBEAT_MIN_CONTRAST = 0.1  # how much likelier the downbeat phase must be than
 TWELVE_EIGHT_HANDICAP = 1.2  # contrast ratio 12/8 needs over 6/8
 BAR_RESET_COST = 2.0  # log-probability a bar of another length must gain to restart the bar count
 HALF_BEATS_BELOW = 80  # bpm; audio beats slower than this may be half notes (see beats_are_halves)
+HALF_BEAT_RUN_STEP, HALF_BEAT_RUN_SHARE = 0.15, 0.5  # ...if this share of onsets follow the last within this many beats
 RUNNER_UP_SHARE = 0.6  # share of the best meter's contrast another needs to be suggested too
 TEMPO_PRIOR_COST = 3.0  # per beat, per squared log ratio between its interval and the typical one
 
@@ -287,11 +288,16 @@ def beats_are_halves(notes: list[Note], beats: np.ndarray, duration: float) -> b
     The beat model sometimes hears a piece whose harmony and bass move in
     half notes as a slow 2/2. Written as quarters, everything would come
     out in values twice too short; a musician would write cut time. Taken
-    to be so only when tracking the notes' own onsets finds a beat at twice
-    the speed, too.
+    to be so only when most notes would otherwise be written as 32nds (a slow
+    piece moving in 16ths has real quarter beats) and tracking the notes' own
+    onsets finds a beat at twice the speed, too.
     """
     period = float(np.median(np.diff(beats)))
     if 60.0 / period >= HALF_BEATS_BELOW:
+        return False
+    steps = np.diff(np.interp(_onset_clusters(notes), beats, np.arange(len(beats))))
+    steps = steps[steps > 0.02]
+    if not len(steps) or np.mean(steps <= HALF_BEAT_RUN_STEP) < HALF_BEAT_RUN_SHARE:
         return False
     onset_period = float(np.median(np.diff(track_beats(duration, notes, None))))
     return abs(np.log2(period / onset_period) - 1) < 0.1
@@ -769,7 +775,11 @@ def quantize(
     else:
         beat_pos, weights = _beat_accents(raw, res)
         m, phase, close = _rank_meters(beat_pos, weights, candidates)
-        starts = [_opening_downbeat(raw, res, beat_pos, weights, m, phase)]
+        # No bar length stands out over the whole piece (often because the
+        # phase drifts), but the downbeats still show locally where bars start.
+        starts = (len(downbeat_probs) and _track_bars(beats, downbeat_probs, m)) or [
+            _opening_downbeat(raw, res, beat_pos, weights, m, phase)
+        ]
 
     # Bars run on at m beats before and after the tracked ones; the first
     # bar is the one holding the first note, the last the one holding the end.

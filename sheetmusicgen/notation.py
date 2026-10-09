@@ -23,6 +23,7 @@ from music21 import (
 )
 
 from .rhythm import QNote, Rhythm
+from .simplify import arrange
 
 SHARP_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
 FLAT_NAMES = ["C", "D-", "D", "E-", "E", "F", "G-", "G", "A-", "A", "B-", "B"]
@@ -221,11 +222,16 @@ def choose_clefs(measures: list[stream.Measure], home: str) -> list[str]:
     return min(best.values(), key=lambda t: t[0])[1]
 
 
-def build_score(rhythm: Rhythm, title: str, split: int = 60) -> tuple[stream.Score, key.Key]:
+def build_score(rhythm: Rhythm, title: str, split: int = 60, simplify: bool = False) -> tuple[stream.Score, key.Key]:
+    """The two-staff score; `simplify` writes an easy arrangement instead (see simplify.py)."""
     k = detect_key(rhythm.notes)
     spell = speller(k)
     bars = rhythm.bars(max((q.end for q in rhythm.notes), default=Fraction(0)))
     notes = release_pedaled(rhythm.notes, split, [b for _, b in bars])
+    beat = Fraction(3, 2) if rhythm.compound else Fraction(1)
+    if simplify:
+        quarter_seconds = 60 / rhythm.bpm / (2 if rhythm.cut else 1.5 if rhythm.compound else 1)
+        notes = arrange(notes, [is_right(q, split) for q in notes], bars, beat, quarter_seconds)
 
     right = [q for q in notes if is_right(q, split)]
     left = [q for q in notes if not is_right(q, split)]
@@ -250,7 +256,7 @@ def build_score(rhythm: Rhythm, title: str, split: int = 60) -> tuple[stream.Sco
             if sig != current:
                 p.insert(start, meter.TimeSignature(sig))
                 current = sig
-        build_staff(staff_notes, spell, p, total, Fraction(3, 2) if rhythm.compound else Fraction(1))
+        build_staff(staff_notes, spell, p, total, beat)
         parts.append(p)
 
     beat_unit = note.Note(type="half" if rhythm.cut else "quarter", dots=1 if rhythm.compound else 0)
